@@ -4,6 +4,7 @@ import bloc_provider.BlocProvider
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import state.State
 
 
 class Emitter {
@@ -22,7 +23,7 @@ class Emitter {
 
     }
 
-    suspend fun onEmitState(data: Any){
+    suspend fun <T> onEmitState(data: T )where T : State {
         BlocProvider.listenStates(flow{
             emit(data)
         })

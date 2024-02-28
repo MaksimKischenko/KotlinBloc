@@ -1,20 +1,19 @@
 package bloc_provider
 
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
-import java.util.concurrent.CompletableFuture
+import state.State
+
 
 object BlocProvider {
-    val blocFlow = MutableSharedFlow<Any>()
+    val blocFlow = MutableSharedFlow<State>()
     fun <T> read(data: T): Flow<T> {
         return flow {
             emit(data)
         }
     }
 
-    suspend fun listenStates(data: Flow<Any>) = coroutineScope {
+    suspend fun <T> listenStates(data: Flow<T>) where T : State = coroutineScope {
         data.collect {
             blocFlow.emit(it)
         }
