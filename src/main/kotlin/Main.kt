@@ -10,53 +10,62 @@ import io.ktor.client.engine.cio.*
 import io.ktor.client.request.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.onClosed
 import kotlinx.coroutines.flow.*
 import state.FlightInitial
 import state.FlightLoaded
 import state.FlightLoading
 import java.net.URL
+import kotlin.system.measureTimeMillis
+import kotlin.time.Duration.Companion.milliseconds
 
 private const val BASE_URL = "http://kotlin-book.bignerdranch.com/2e"
 private const val FLIGHT_ENDPOINT = "$BASE_URL/flight"
 private const val LOYALTY_ENDPOINT = "$BASE_URL/loyalty"
 
-
 suspend fun main(): Unit = coroutineScope {
     launch {
-        BlocProvider.blocFlow.collect {
-            println(it)
+        BlocProvider.blocFlow.collect { state ->
+            when (state) {
+                is FlightLoading -> {
+                    println("FlightLoading")
+                }
+
+                is FlightLoaded -> {
+                    println("FlightLoaded")
+                    println(state.flight)
+                }
+
+                is FlightInitial -> {
+                    println("FlightInitial")
+                }
+            }
         }
     }
     FlightBloc(BlocProvider.read<Event>(FlightInit(FLIGHT_ENDPOINT)))
-    delay(2000)
-    FlightBloc(BlocProvider.read<Event>(FlightDispose()))
-    delay(2000)
+//    FlightBloc(BlocProvider.read<Event>(FlightDispose()))
+//    delay(2000)
 }
 
 
 class FlightBloc() {
+
     @OptIn(DelicateCoroutinesApi::class)
     constructor(eventFlow: Flow<Event>) : this() {
         GlobalScope.launch {
+            BlocProvider.blocFlow.emit(FlightInitial())
             onEvent(eventFlow)
         }
     }
-
-    val jobDeferred = CompletableDeferred<Job>()
-    val jobChannel = Channel<Job>()
 
     private suspend fun onEvent(
         eventFlow: Flow<Event>, emitter: Emitter = Emitter()
     ) = coroutineScope {
         emitter.onEachEvent(eventFlow, onEventData = { event ->
-            if (event is FlightInit) {
-                launch {
-                    println(Thread.currentThread().name)
+            launch {
+                if (event is FlightInit) {
                     onFlightsInit(event, emitter)
-                }
-            } else if (event is FlightDispose) {
-                launch {
-                    println(Thread.currentThread().name)
+                } else if (event is FlightDispose) {
                     onFlightsDispose(event, emitter)
                 }
             }
@@ -65,10 +74,9 @@ class FlightBloc() {
 
     private suspend fun onFlightsInit(
         event: FlightInit, emitter: Emitter
-    ) = coroutineScope {
+    ) {
         emitter.onEmitState(FlightLoading())
         val result = fetchFlight()
-        println("final: $result")
         emitter.onEmitState(
             FlightLoaded(
                 result
@@ -79,29 +87,14 @@ class FlightBloc() {
     private suspend fun onFlightsDispose(
         event: FlightDispose, emitter: Emitter
     ) = coroutineScope {
-        println("onFlightsDispose")
-
-        val job = jobDeferred.await()
-
-        println("JOB:$job")
-        job.cancel()
-        if (job.isCancelled) {
-            emitter.onEmitState(FlightInitial())
-        }
+        emitter.onEmitState(FlightInitial())
     }
 
-
-    private suspend fun fetchFlight(): String = coroutineScope {
-        var result = ""
-        val job = launch(Dispatchers.IO) {
-            URL(FLIGHT_ENDPOINT).readText()
-            val client = HttpClient(CIO)
-            val flightResponse = client.get<String>(FLIGHT_ENDPOINT)
-            result = flightResponse
-        }
-        jobDeferred.complete(job)
-        job.join()
-        return@coroutineScope result
+    private suspend fun fetchFlight(): String {
+        URL(FLIGHT_ENDPOINT).readText()
+        val client = HttpClient(CIO)
+        val flightResponse = client.get<String>(FLIGHT_ENDPOINT)
+        return flightResponse
     }
 }
 
